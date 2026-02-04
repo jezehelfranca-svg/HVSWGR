@@ -1,0 +1,116 @@
+SPR — IEC 61936‑1:2021 High‑Voltage Power Installations
+
+
+High‑voltage power installations >1 kV AC / >1.5 kV DC require unified global safety, reliability, and functional design rules.
+
+
+HV installations include substations, power stations, industrial plants, offshore platforms, and transition structures.
+
+
+Excludes transmission lines, railway traction, mining, ships, offshore drilling, test sites, and medical equipment.
+
+
+Core objective: protect human life, livestock, property; ensure safe operation under normal and abnormal conditions; prevent electrical, mechanical, thermal, environmental hazards.
+
+
+Fundamental design inputs: site access, environment, topography, seismicity, soil resistivity, pollution level, EM fields, noise, fauna, humidity, temperature.
+
+
+Electrical design:
+
+Must withstand normal currents, short‑circuit currents, switching stresses.
+Neutral earthing method dictates fault current, protection philosophy, insulation level.
+Overvoltage protection via surge arresters, insulation coordination per IEC 60071.
+Harmonics, EMC, corona, radio interference must be controlled.
+
+
+
+Mechanical design: structures must survive dead load, tension, wind, ice, erection loads, switching forces, short‑circuit forces, seismic accelerations, loss of conductor tension.
+
+
+Environmental design: indoor/outdoor temperature classes, humidity up to 95–98%, UV, pollution per IEC 60815, condensation, precipitation, dust, corrosive gases, explosive atmospheres per IEC 60079.
+
+
+Insulation: minimum clearances depend on Um, LIWV/SIWV; altitude corrections; dynamic clearances under wind/short‑circuit/insulator failure; dielectric tests required when clearances reduced.
+
+
+Definitions anchor latent structure:
+
+Electrical equipment, Um, Ua, rated values, active parts, feeder, ferro‑resonance, TOV, transient overvoltage.
+Earthing system, earth electrode, RE, ZE, EPR, touch/step voltage, transferred potential.
+Protective barrier, protective obstacle, enclosure, clearance N (danger zone).
+
+
+
+Safety measures:
+
+Prevent direct contact via barriers, obstacles, placing out of reach, enclosures (IP2X/IP2XC).
+Prevent indirect contact by earthing system designed for permissible touch voltages.
+Arc‑fault mitigation: interlocks, current‑limiting devices, pressure‑relief, remote operation, arc‑tested equipment (IEC 62271‑200/203).
+Fire protection: separation distances, EI/REI fire walls, liquid containment, extinguishing systems, low‑flammability materials.
+
+
+
+Equipment requirements:
+
+Switchgear: clear indication of positions, robust interlocks, withstand ionized gas, fault duties.
+Transformers: fire risk evaluation, cooling, noise, oil containment, ferro‑resonance mitigation, safe access for sampling.
+GIS: gas compartment marking, SF6 handling, vibration isolation, accurate earthing/bonding.
+Cables: temperature limits, short‑circuit forces, mechanical protection, proximity analysis, induced voltage mitigation.
+Rotating machines: terminal box fault containment, temperature rise protection, enclosure IP ratings.
+
+
+
+Buildings: structural strength, fire resistance (60–120 min), ventilation/airflow, emergency exits, aisles (≥800 mm), escape routes (20–40 m max), doors opening outward.
+
+
+Outdoor installations: minimum boundary distances, fence heights ≥1800 mm, conductor heights H = N + 2250 mm (≥2500 mm), building clearance W = N+1000/2000 mm.
+
+
+Earthing system:
+
+Safety criterion derived from IEC 60479 body current limits.
+Touch voltage limits per Annex B/C.
+Global earthing system preferred in industrial/urban areas.
+Earthing must withstand thermal/mechanical stresses for full fault duration.
+Bonding of GIS, transformer tanks, cable sheaths essential.
+
+
+
+Protection systems:
+
+Overcurrent, short‑circuit, earth‑fault, thermal, over/under‑voltage, under‑frequency.
+Coordination studies required; backup protection mandatory.
+Integrated protection/control acceptable only with functional independence.
+
+
+
+Automation & auxiliary systems:
+
+Control/monitoring, load shedding, emergency shutdown, re‑acceleration.
+UPS for essential AC loads; DC batteries sized for blackout scenarios.
+SF6 gas plants, hydrogen cooling systems, compressed air systems require safe handling, monitoring, venting.
+
+
+
+EMC design:
+
+Shielded cables, equipotential bonding, filtered supplies, segregation of circuits, twisted pairs, metallic ducts, optical fibers for sensitive signals.
+
+
+
+Testing & commissioning:
+
+Visual checks, functional tests, dielectric tests (if required), trial operation.
+Documentation, manuals, safe working procedures must follow IEC/IEEE 82079‑1.
+
+
+
+Annexes:
+
+A: insulation levels & clearances.
+B/C: permissible touch voltage methodologies (IEC/IEEE).
+D: earthing system design flowchart.
+E: lightning protection models (shield wires, rods).
+F: safe‑working clearances.
+G: country‑specific deviations.
