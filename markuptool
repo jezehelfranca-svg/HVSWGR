@@ -1,0 +1,422 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox, colorchooser
+from PIL import Image, ImageTk, ImageGrab
+import sys
+import time
+import io
+
+# We need pynput to simulate key presses for the capture feature
+try:
+    from pynput import keyboard
+except ImportError:
+    messagebox.showerror("Error", "The 'pynput' library is required. Please install it by running: pip install pynput")
+    sys.exit()
+
+try:
+    import win32clipboard
+except ImportError:
+    messagebox.showerror("Error", "The 'pywin32' library is required. Please install it by running: pip install pywin32")
+    sys.exit()
+
+
+class MarkupApp(tk.Tk):
+    """
+    An application for capturing, pasting, and marking up images with various drawing tools.
+    """
+    # --- Constants ---
+    INITIAL_COLOR = "red"
+    INITIAL_WIDTH = 2
+    AVAILABLE_WIDTHS = [1, 2, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+    TOOLS = ["Circle", "Rectangle", "Arrow", "Polyline", "Text"]
+    LINE_STYLES = ["Solid", "Dashed"]
+    ARROW_TYPES = {
+        "Narrow": (8, 10, 3),
+        "Wide": (10, 15, 5),
+        "Very Wide": (12, 20, 7)
+    }
+    
+    def __init__(self):
+        super().__init__()
+        self.title("Image Markup Tool")
+        
+        # --- Platform Check ---
+        if sys.platform != "win32":
+            messagebox.showwarning("Compatibility Warning", "The integrated screen capture feature only works on Windows.")
+
+        # --- State Variables ---
+        self.image = None
+        self.photo = None
+        self.current_tool = None
+        self.current_color = self.INITIAL_COLOR
+        self.current_width = tk.IntVar(value=self.INITIAL_WIDTH)
+        self.current_line_style = tk.StringVar(value=self.LINE_STYLES[0])
+        self.current_arrow_type = tk.StringVar(value=list(self.ARROW_TYPES.keys())[0])
+        self.actions = []
+        self.start_x = self.start_y = None
+        self.temp_shape = None
+        
+        self.poly_points = []
+        self.poly_temp_ids = []
+        
+        self.active_text_widget = None
+        self.active_text_window = None
+        
+        # NEW: State for moving text objects
+        self.moving_item = None
+        
+        self.keyboard_controller = keyboard.Controller()
+
+        # --- UI Setup ---
+        self._setup_ui()
+        self._bind_events()
+        self._update_tool_state()
+
+    def _setup_ui(self):
+        """Initializes and packs all UI widgets."""
+        top_frame = tk.Frame(self, bd=1, relief=tk.RAISED)
+        top_frame.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2)
+
+        file_group = tk.LabelFrame(top_frame, text="File", padx=5, pady=5)
+        file_group.pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(file_group, text="Paste (Ctrl+V)", command=self.paste_image).pack(side=tk.LEFT)
+        tk.Button(file_group, text="Capture", command=self.capture_screen).pack(side=tk.LEFT)
+        self.save_button = tk.Button(file_group, text="Save", command=self.save_image)
+        self.save_button.pack(side=tk.LEFT)
+        self.copy_button = tk.Button(file_group, text="Copy", command=self.copy_image)
+        self.copy_button.pack(side=tk.LEFT)
+
+        tools_group = tk.LabelFrame(top_frame, text="Tools", padx=5, pady=5)
+        tools_group.pack(side=tk.LEFT, padx=5, pady=5)
+        self.tool_buttons = {}
+        for tool in self.TOOLS:
+            btn = tk.Button(tools_group, text=tool, command=lambda t=tool: self.set_tool(t))
+            btn.pack(side=tk.LEFT)
+            self.tool_buttons[tool] = btn
+
+        props_group = tk.LabelFrame(top_frame, text="Properties", padx=5, pady=5)
+        props_group.pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(props_group, text="Color", command=self.choose_color).pack(side=tk.LEFT)
+        self.color_display = tk.Label(props_group, bg=self.current_color, width=3, relief='sunken')
+        self.color_display.pack(side=tk.LEFT, padx=(0, 5))
+        
+        tk.Label(props_group, text="Size:").pack(side=tk.LEFT)
+        tk.OptionMenu(props_group, self.current_width, *self.AVAILABLE_WIDTHS).pack(side=tk.LEFT)
+        
+        tk.Label(props_group, text="Line:").pack(side=tk.LEFT, padx=(5,0))
+        tk.OptionMenu(props_group, self.current_line_style, *self.LINE_STYLES).pack(side=tk.LEFT)
+        
+        tk.Label(props_group, text="Arrow:").pack(side=tk.LEFT, padx=(5,0))
+        tk.OptionMenu(props_group, self.current_arrow_type, *self.ARROW_TYPES.keys()).pack(side=tk.LEFT)
+
+        self.undo_button = tk.Button(top_frame, text="Undo (Ctrl+Z)", command=self.undo)
+        self.undo_button.pack(side=tk.RIGHT, padx=10)
+
+        self.canvas = tk.Canvas(self, cursor="cross", bg="lightgrey")
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        self.status_bar = tk.Label(self, text="Paste or Capture an image to begin.", bd=1, relief=tk.SUNKEN, anchor=tk.W)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def _bind_events(self):
+        """Binds all application-level and canvas events."""
+        self.canvas.bind('<ButtonPress-1>', self.on_left_down)
+        self.canvas.bind('<B1-Motion>', self.on_mouse_move)
+        self.canvas.bind('<ButtonRelease-1>', self.on_mouse_up)
+        self.canvas.bind('<ButtonPress-3>', self.on_right_down)
+        # NEW: Binding for double-click to edit text
+        self.canvas.bind('<Double-Button-1>', self.on_double_click)
+        
+        self.bind_all('<Control-v>', lambda e: self.paste_image())
+        self.bind_all('<Control-z>', lambda e: self.undo())
+
+    def _update_tool_state(self):
+        state = tk.NORMAL if self.image else tk.DISABLED
+        for btn in self.tool_buttons.values():
+            btn.config(state=state)
+        self.save_button.config(state=state)
+        self.copy_button.config(state=state)
+        self.undo_button.config(state=state)
+        
+    def _reset_drawing_state(self):
+        self.start_x = self.start_y = None
+        if self.temp_shape:
+            self.canvas.delete(self.temp_shape)
+            self.temp_shape = None
+        self.poly_points.clear()
+        self.poly_temp_ids.clear()
+        self.commit_text()
+
+    # --- Core Functionality ---
+
+    def paste_image(self):
+        try:
+            img = ImageGrab.grabclipboard()
+            if isinstance(img, Image.Image):
+                self.load_image(img)
+            else:
+                self.status_bar.config(text="Clipboard does not contain image data.")
+        except Exception:
+            self.status_bar.config(text="Could not paste from clipboard. No image found.")
+
+    def capture_screen(self):
+        self.withdraw()
+        self.after(200, self.trigger_snipping_tool)
+
+    def trigger_snipping_tool(self):
+        try:
+            with self.keyboard_controller.pressed(keyboard.Key.shift, keyboard.Key.cmd):
+                self.keyboard_controller.press('s')
+                self.keyboard_controller.release('s')
+            self.after(500, self.restore_window_after_capture)
+        except Exception as e:
+            self.status_bar.config(text=f"Error triggering capture: {str(e)}")
+            self.deiconify()
+    
+    def restore_window_after_capture(self):
+        self.deiconify()
+        self.focus_force()
+        self.status_bar.config(text="Capture complete! Press 'Paste' or Ctrl+V to load the new image.")
+        self.bell()
+
+    def load_image(self, img):
+        self.image = img
+        self.photo = ImageTk.PhotoImage(img)
+        self.canvas.delete('all')
+        
+        w, h = img.size
+        self.geometry(f'{w+20}x{h+100}')
+        self.canvas.config(width=w, height=h, bg="white")
+        self.canvas.create_image(0, 0, image=self.photo, anchor='nw', tags=("background_image",))
+        
+        self.actions.clear()
+        self._reset_drawing_state()
+        self._update_tool_state()
+        self.status_bar.config(text=f"Image loaded ({w}x{h}). Select a tool to begin.")
+
+    def _send_to_clipboard(self, image):
+        output = io.BytesIO()
+        image.convert("RGB").save(output, "BMP")
+        data = output.getvalue()[14:]
+        output.close()
+        
+        win32clipboard.OpenClipboard()
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+        win32clipboard.CloseClipboard()
+    
+    def copy_image(self):
+        if not self.image: return
+        self.commit_text()
+        
+        x = self.canvas.winfo_rootx()
+        y = self.canvas.winfo_rooty()
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        
+        try:
+            img = ImageGrab.grab(bbox=(x, y, x + w, y + h))
+            self._send_to_clipboard(img)
+            self.status_bar.config(text="Image copied to clipboard!")
+        except Exception as e:
+            messagebox.showerror("Copy Error", f"Failed to copy image: {e}")
+
+    def save_image(self):
+        if not self.image: return
+        self.commit_text()
+        
+        file_path = filedialog.asksaveasfilename(
+            defaultextension='.png',
+            filetypes=[('PNG Image', '*.png'), ('JPEG Image', '*.jpg'), ('All Files', '*.*')]
+        )
+        if not file_path: return
+
+        x = self.canvas.winfo_rootx()
+        y = self.canvas.winfo_rooty()
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        
+        try:
+            img = ImageGrab.grab(bbox=(x, y, x + w, y + h))
+            img.save(file_path)
+            self.status_bar.config(text=f"Image saved to {file_path}")
+        except Exception as e:
+            messagebox.showerror("Save Error", f"Failed to save image: {e}")
+
+    def _get_shape_options(self):
+        opts = {'width': self.current_width.get()}
+        if self.current_line_style.get() == "Dashed":
+            opts['dash'] = (4, 4)
+        return opts
+
+    def set_tool(self, tool):
+        self._reset_drawing_state()
+        self.current_tool = tool
+        if tool:
+            self.status_bar.config(text=f"Tool set to: {tool}")
+        else:
+            self.status_bar.config(text="Tool deselected. Select a tool to begin.")
+        for t, btn in self.tool_buttons.items():
+            btn.config(relief=tk.SUNKEN if t == tool else tk.RAISED)
+
+    def choose_color(self):
+        color_code = colorchooser.askcolor(color=self.current_color)[1]
+        if color_code:
+            self.current_color = color_code
+            self.color_display.config(bg=color_code)
+
+    def on_left_down(self, e):
+        if self.active_text_widget:
+            self.commit_text()
+            return
+
+        # Check if clicking on an existing text item to move it
+        items = self.canvas.find_overlapping(e.x, e.y, e.x, e.y)
+        if items:
+            item_id = items[-1]
+            if "text_item" in self.canvas.gettags(item_id):
+                self.moving_item = item_id
+                self.start_x, self.start_y = e.x, e.y
+                return
+
+        if not self.image or e.x > self.image.width or e.y > self.image.height:
+            return
+            
+        self.start_x, self.start_y = e.x, e.y
+        if self.current_tool == 'Polyline':
+            self.poly_points.append((e.x, e.y))
+            if len(self.poly_points) > 1:
+                x1, y1 = self.poly_points[-2]
+                x2, y2 = self.poly_points[-1]
+                opts = self._get_shape_options()
+                line_id = self.canvas.create_line(x1, y1, x2, y2, fill=self.current_color, **opts)
+                self.poly_temp_ids.append(line_id)
+        elif self.current_tool == 'Text':
+            font_size = 10 + self.current_width.get()
+            txt_widget = tk.Text(self.canvas, wrap='word', width=30, height=4, font=("Arial", font_size), bd=0)
+            txt_widget.config(fg=self.current_color, insertbackground=self.current_color)
+            self.active_text_window = self.canvas.create_window(e.x, e.y, window=txt_widget, anchor='nw')
+            txt_widget.focus_set()
+            self.active_text_widget = txt_widget
+
+    def on_mouse_move(self, e):
+        # Handle moving a text item
+        if self.moving_item:
+            dx = e.x - self.start_x
+            dy = e.y - self.start_y
+            self.canvas.move(self.moving_item, dx, dy)
+            self.start_x, self.start_y = e.x, e.y
+            return
+
+        if not self.start_x or not self.current_tool or self.current_tool in ['Text', 'Polyline']:
+            return
+        if self.temp_shape:
+            self.canvas.delete(self.temp_shape)
+            
+        opts = self._get_shape_options()
+        if self.current_tool == 'Rectangle':
+            self.temp_shape = self.canvas.create_rectangle(self.start_x, self.start_y, e.x, e.y, outline=self.current_color, **opts)
+        elif self.current_tool == 'Circle':
+            self.temp_shape = self.canvas.create_oval(self.start_x, self.start_y, e.x, e.y, outline=self.current_color, **opts)
+        elif self.current_tool == 'Arrow':
+            arrow_shape = self.ARROW_TYPES[self.current_arrow_type.get()]
+            self.temp_shape = self.canvas.create_line(self.start_x, self.start_y, e.x, e.y, fill=self.current_color, arrow='last', arrowshape=arrow_shape, **opts)
+
+    def on_mouse_up(self, e):
+        # Handle dropping a text item
+        if self.moving_item:
+            self.moving_item = None
+            return
+            
+        if not self.start_x or not self.current_tool or self.current_tool in ['Text', 'Polyline']:
+            return
+        if self.temp_shape:
+            self.canvas.delete(self.temp_shape)
+            self.temp_shape = None
+        
+        shape_id = None
+        opts = self._get_shape_options()
+        if self.current_tool == 'Rectangle':
+            shape_id = self.canvas.create_rectangle(self.start_x, self.start_y, e.x, e.y, outline=self.current_color, **opts)
+        elif self.current_tool == 'Circle':
+            shape_id = self.canvas.create_oval(self.start_x, self.start_y, e.x, e.y, outline=self.current_color, **opts)
+        elif self.current_tool == 'Arrow':
+            arrow_shape = self.ARROW_TYPES[self.current_arrow_type.get()]
+            shape_id = self.canvas.create_line(self.start_x, self.start_y, e.x, e.y, fill=self.current_color, arrow='last', arrowshape=arrow_shape, **opts)
+        
+        if shape_id:
+            self.actions.append(shape_id)
+        self.start_x = self.start_y = None
+
+    def on_right_down(self, e):
+        if self.current_tool == 'Polyline' and self.poly_points:
+            self.actions.extend(self.poly_temp_ids)
+            self._reset_drawing_state()
+            self.status_bar.config(text="Polyline created. Select a tool.")
+            return
+
+        if not self.current_tool:
+            try:
+                item_id = self.canvas.find_closest(e.x, e.y)[0]
+                if "background_image" not in self.canvas.gettags(item_id):
+                    self.canvas.delete(item_id)
+                    if item_id in self.actions:
+                        self.actions.remove(item_id)
+                    self.status_bar.config(text="Shape deleted.")
+            except IndexError:
+                self.status_bar.config(text="Right-clicked on empty canvas.")
+            return
+
+        self.set_tool(None)
+        self.status_bar.config(text="Tool deselected.")
+
+    def on_double_click(self, event):
+        """Handles double-clicking to edit an existing text item."""
+        items = self.canvas.find_overlapping(event.x, event.y, event.x, event.y)
+        if items:
+            item_id = items[-1]
+            if "text_item" in self.canvas.gettags(item_id):
+                # Get existing text properties
+                x, y = self.canvas.coords(item_id)
+                text_content = self.canvas.itemcget(item_id, 'text')
+                
+                # Remove the old static text from canvas and history
+                self.canvas.delete(item_id)
+                if item_id in self.actions:
+                    self.actions.remove(item_id)
+                    
+                # Create an editable text widget in its place
+                font_size = 10 + self.current_width.get()
+                txt_widget = tk.Text(self.canvas, wrap='word', width=30, height=4, font=("Arial", font_size), bd=0)
+                txt_widget.insert("1.0", text_content)
+                txt_widget.config(fg=self.current_color, insertbackground=self.current_color)
+                self.active_text_window = self.canvas.create_window(x, y, window=txt_widget, anchor='nw')
+                txt_widget.focus_set()
+                self.active_text_widget = txt_widget
+
+    def commit_text(self):
+        """Finalizes a text object, converting the widget to a static canvas item."""
+        if self.active_text_widget:
+            content = self.active_text_widget.get("1.0", "end-1c").strip()
+            x, y = self.canvas.coords(self.active_text_window)
+            self.canvas.delete(self.active_text_window)
+            if content:
+                font_size = 10 + self.current_width.get()
+                # Add a specific tag to identify this as a movable/editable text item
+                text_id = self.canvas.create_text(x, y, text=content, anchor='nw', fill=self.current_color, font=("Arial", font_size), tags=("text_item",))
+                self.actions.append(text_id)
+            self.active_text_widget = None
+            self.active_text_window = None
+
+    def undo(self):
+        if self.actions:
+            item_id = self.actions.pop()
+            self.canvas.delete(item_id)
+            self.status_bar.config(text="Last action undone.")
+        else:
+            self.status_bar.config(text="Nothing to undo.")
+
+
+if __name__ == '__main__':
+    app = MarkupApp()
+    app.mainloop()
+
