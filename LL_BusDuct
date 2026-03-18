@@ -1,2 +1,14 @@
+Root Cause
+The GTG GCB print was processed in the early stage without the vendor print, and after receiving the GCB print, the transfer of foundation-related information was delayed.
+
+3) Corrective Actions
+Re-fabrication of the busduct straight section and flange.
+After adjusting the dimensional deviation based on the on-site measurement results, the final fabrication design (Design Dimension) was confirmed and re-fabrication was carried out accordingly.
+
+4) Lessons Learned / Preventive Actions
+
 Organize and provide all required information to the Bus Duct Vendor during the design stage to ensure no information is omitted.
 Coordinate during KOM to ensure the Bus Duct Vendor does not proceed with fabrication or freeze the design without receiving all essential information.
+
+
+
